@@ -17,14 +17,14 @@ from booking import (
 # =========================================================
 
 st.set_page_config(
-    page_title="CampusConnect Teaching Edition",
+    page_title="CampusConnect",
     page_icon="🎓",
     layout="wide",
 )
 
 
 # =========================================================
-# FIXED DEMONSTRATION DATA
+# FIXED DEMONSTRATION USERS
 # =========================================================
 
 STUDENTS = [
@@ -37,6 +37,10 @@ STUDENTS = [
 ]
 
 
+# =========================================================
+# CONSULTATION SESSIONS
+# =========================================================
+
 SESSIONS = [
     Session(
         session_id="SQE-1000",
@@ -46,6 +50,7 @@ SESSIONS = [
         end=time(11, 0),
         capacity=2,
     ),
+
     Session(
         session_id="LLM-1030",
         subject="Large Language Models",
@@ -54,6 +59,7 @@ SESSIONS = [
         end=time(11, 30),
         capacity=2,
     ),
+
     Session(
         session_id="CB-1130",
         subject="Consumer Behaviour",
@@ -66,7 +72,7 @@ SESSIONS = [
 
 
 # =========================================================
-# SESSION STATE
+# INITIAL SYSTEM STATE
 # =========================================================
 
 if "bookings" not in st.session_state:
@@ -78,42 +84,43 @@ if "waitlist" not in st.session_state:
 if "event_log" not in st.session_state:
     st.session_state.event_log = []
 
+if "last_message" not in st.session_state:
+    st.session_state.last_message = None
+
 
 # =========================================================
 # HELPER FUNCTIONS
 # =========================================================
 
-def log_event(message):
+def add_event(message):
     st.session_state.event_log.insert(0, message)
 
 
-def reset_demo():
+def reset_system():
     st.session_state.bookings = []
     st.session_state.waitlist = []
-    st.session_state.event_log = [
-        "Demo reset. All bookings and waitlists cleared."
-    ]
+    st.session_state.event_log = []
+    st.session_state.last_message = (
+        "info",
+        "CampusConnect has been reset. "
+        "There are no bookings or waitlist entries.",
+    )
 
 
-def load_waitlist_scenario():
-    st.session_state.bookings = [
-        Booking("Alex Tan", "SQE-1000"),
-        Booking("Jamie Lim", "SQE-1000"),
-        Booking("Mei Chen", "CB-1130"),
-    ]
+def student_has_booking(student, session_id):
+    return any(
+        booking.student == student
+        and booking.session_id == session_id
+        for booking in st.session_state.bookings
+    )
 
-    st.session_state.waitlist = [
-        WaitlistEntry("Priya Rao", "SQE-1000"),
-        WaitlistEntry("Sam Lee", "SQE-1000"),
-    ]
 
-    st.session_state.event_log = [
-        "Priya Rao joined SQE waitlist at position 1.",
-        "Sam Lee joined SQE waitlist at position 2.",
-        "Jamie Lim booked Software Quality Engineering.",
-        "Alex Tan booked Software Quality Engineering.",
-        "Teaching scenario loaded.",
-    ]
+def student_is_waitlisted(student, session_id):
+    return any(
+        entry.student == student
+        and entry.session_id == session_id
+        for entry in st.session_state.waitlist
+    )
 
 
 # =========================================================
@@ -123,264 +130,421 @@ def load_waitlist_scenario():
 st.title("🎓 CampusConnect")
 
 st.caption(
-    "Software Quality Engineering — Teaching Edition"
+    "University Consultation Booking System — "
+    "Software Quality Engineering Demonstration"
 )
 
 st.info(
-    "Current version demonstrates baseline booking rules, "
-    "waitlisting, automatic promotion and regression protection."
+    "Select a student and create the booking scenario live. "
+    "The system starts with no bookings and no waitlists."
 )
 
 
 # =========================================================
-# SIDEBAR DEMO CONTROLS
+# SIDEBAR
 # =========================================================
 
 with st.sidebar:
 
-    st.header("🎬 Demo Controls")
+    st.header("CampusConnect")
+
+    st.subheader("Current Student")
 
     current_student = st.selectbox(
-        "Current student",
+        "Select student",
         STUDENTS,
+        index=0,
+    )
+
+    st.success(
+        f"Logged in as: **{current_student}**"
     )
 
     st.divider()
 
     if st.button(
-        "Load Waitlist Scenario",
+        "🔄 Reset System",
         use_container_width=True,
     ):
-        load_waitlist_scenario()
-        st.rerun()
-
-    if st.button(
-        "Reset Demo",
-        use_container_width=True,
-    ):
-        reset_demo()
+        reset_system()
         st.rerun()
 
     st.divider()
 
-    st.subheader("Current Version")
-    st.write("**CampusConnect V1.1**")
-
-    st.write("Change Request:")
-    st.code("CR-001 — Waitlist Support")
-
-    st.write("Automated tests:")
-    st.success("10 tests passed")
+    st.caption("Teaching Demo")
+    st.write("Version: **V1.1**")
+    st.write("Change: **CR-001 Waitlist**")
+    st.write("Automated tests: **10 passed**")
 
 
 # =========================================================
-# STUDENT VIEW
+# LAST SYSTEM MESSAGE
 # =========================================================
 
-st.header(f"Student View — {current_student}")
+if st.session_state.last_message:
 
-student_bookings = [
+    message_type, message = (
+        st.session_state.last_message
+    )
+
+    if message_type == "success":
+        st.success(message)
+
+    elif message_type == "warning":
+        st.warning(message)
+
+    elif message_type == "error":
+        st.error(message)
+
+    else:
+        st.info(message)
+
+    st.session_state.last_message = None
+
+
+# =========================================================
+# STUDENT DASHBOARD
+# =========================================================
+
+st.header(f"Student Dashboard — {current_student}")
+
+
+current_bookings = [
     booking
     for booking in st.session_state.bookings
     if booking.student == current_student
 ]
 
-student_waitlist = [
+current_waitlist = [
     entry
     for entry in st.session_state.waitlist
     if entry.student == current_student
 ]
 
 
-metric1, metric2, metric3 = st.columns(3)
+m1, m2, m3 = st.columns(3)
 
-metric1.metric(
-    "Confirmed bookings",
-    len(student_bookings),
+m1.metric(
+    "Confirmed Bookings",
+    len(current_bookings),
 )
 
-metric2.metric(
-    "Waitlist entries",
-    len(student_waitlist),
+m2.metric(
+    "Waitlist Entries",
+    len(current_waitlist),
 )
 
-metric3.metric(
-    "Available sessions",
+m3.metric(
+    "Consultation Sessions",
     len(SESSIONS),
 )
 
 
 # =========================================================
-# CONSULTATION CARDS
+# CONSULTATIONS
 # =========================================================
 
-st.subheader("Available Consultations")
+st.divider()
+st.header("Available Consultations")
 
-cols = st.columns(len(SESSIONS))
+columns = st.columns(len(SESSIONS))
 
 
-for col, session in zip(cols, SESSIONS):
+for column, session in zip(columns, SESSIONS):
 
-    with col:
+    with column:
 
-        confirmed = [
+        confirmed_students = [
             booking.student
             for booking in st.session_state.bookings
             if booking.session_id == session.session_id
         ]
 
-        waiting = [
+        waitlisted_students = [
             entry.student
             for entry in st.session_state.waitlist
             if entry.session_id == session.session_id
         ]
 
-        used = len(confirmed)
-        places_left = session.capacity - used
+        places_used = len(confirmed_students)
 
-        st.markdown(f"### {session.subject}")
+        places_remaining = (
+            session.capacity - places_used
+        )
 
-        st.write(f"**Lecturer:** {session.lecturer}")
+        already_booked = student_has_booking(
+            current_student,
+            session.session_id,
+        )
+
+        already_waitlisted = student_is_waitlisted(
+            current_student,
+            session.session_id,
+        )
+
+
+        st.subheader(session.subject)
+
+        st.write(
+            f"**Lecturer:** {session.lecturer}"
+        )
 
         st.write(
             f"**Time:** "
-            f"{session.start.strftime('%H:%M')}–"
+            f"{session.start.strftime('%H:%M')}"
+            f"–"
             f"{session.end.strftime('%H:%M')}"
         )
 
-        if places_left > 0:
+        st.write(
+            f"**Capacity:** "
+            f"{places_used}/{session.capacity}"
+        )
+
+
+        if places_remaining > 0:
+
             st.success(
-                f"{places_left} of {session.capacity} places available"
-            )
-        else:
-            st.error(
-                f"FULL — {session.capacity}/{session.capacity}"
+                f"{places_remaining} place(s) available"
             )
 
-        if places_left > 0:
-            button_text = "Book appointment"
         else:
-            button_text = "Join waitlist"
 
-        if st.button(
-            button_text,
-            key=f"request-{session.session_id}",
-            use_container_width=True,
-        ):
+            st.error("SESSION FULL")
 
-            (
-                updated_bookings,
-                updated_waitlist,
-                ok,
-                message,
-                status,
-            ) = request_booking(
+
+        if waitlisted_students:
+
+            st.warning(
+                f"Waitlist: "
+                f"{len(waitlisted_students)} student(s)"
+            )
+
+        else:
+
+            st.write("Waitlist: 0")
+
+
+        # ---------------------------------------------
+        # STUDENT ALREADY BOOKED
+        # ---------------------------------------------
+
+        if already_booked:
+
+            st.success("✓ You are booked")
+
+            st.button(
+                "Already booked",
+                key=f"already-{session.session_id}",
+                disabled=True,
+                use_container_width=True,
+            )
+
+
+        # ---------------------------------------------
+        # STUDENT ALREADY WAITLISTED
+        # ---------------------------------------------
+
+        elif already_waitlisted:
+
+            position = waitlist_position(
                 current_student,
                 session.session_id,
-                SESSIONS,
-                st.session_state.bookings,
                 st.session_state.waitlist,
             )
 
-            st.session_state.bookings = updated_bookings
-            st.session_state.waitlist = updated_waitlist
+            st.warning(
+                f"You are waitlisted — "
+                f"position {position}"
+            )
 
-            if ok:
+            st.button(
+                f"Waitlist position {position}",
+                key=f"waiting-{session.session_id}",
+                disabled=True,
+                use_container_width=True,
+            )
 
-                if status == "booked":
-                    log_event(
+
+        # ---------------------------------------------
+        # BOOKING AVAILABLE
+        # ---------------------------------------------
+
+        elif places_remaining > 0:
+
+            if st.button(
+                "Book Appointment",
+                key=f"book-{session.session_id}",
+                use_container_width=True,
+            ):
+
+                (
+                    updated_bookings,
+                    updated_waitlist,
+                    ok,
+                    message,
+                    status,
+                ) = request_booking(
+                    current_student,
+                    session.session_id,
+                    SESSIONS,
+                    st.session_state.bookings,
+                    st.session_state.waitlist,
+                )
+
+                st.session_state.bookings = (
+                    updated_bookings
+                )
+
+                st.session_state.waitlist = (
+                    updated_waitlist
+                )
+
+                if ok:
+
+                    add_event(
                         f"{current_student} booked "
                         f"{session.subject}."
                     )
 
-                elif status == "waitlisted":
+                    st.session_state.last_message = (
+                        "success",
+                        message,
+                    )
+
+                else:
+
+                    add_event(
+                        f"Booking rejected for "
+                        f"{current_student}: {message}"
+                    )
+
+                    st.session_state.last_message = (
+                        "error",
+                        message,
+                    )
+
+                st.rerun()
+
+
+        # ---------------------------------------------
+        # SESSION FULL → WAITLIST
+        # ---------------------------------------------
+
+        else:
+
+            if st.button(
+                "Join Waitlist",
+                key=f"waitlist-{session.session_id}",
+                use_container_width=True,
+            ):
+
+                (
+                    updated_bookings,
+                    updated_waitlist,
+                    ok,
+                    message,
+                    status,
+                ) = request_booking(
+                    current_student,
+                    session.session_id,
+                    SESSIONS,
+                    st.session_state.bookings,
+                    st.session_state.waitlist,
+                )
+
+                st.session_state.bookings = (
+                    updated_bookings
+                )
+
+                st.session_state.waitlist = (
+                    updated_waitlist
+                )
+
+                if ok:
+
                     position = waitlist_position(
                         current_student,
                         session.session_id,
                         updated_waitlist,
                     )
 
-                    log_event(
+                    add_event(
                         f"{current_student} joined "
                         f"{session.subject} waitlist "
                         f"at position {position}."
                     )
 
-            else:
+                    st.session_state.last_message = (
+                        "warning",
+                        message,
+                    )
 
-                log_event(
-                    f"{current_student}: {message}"
-                )
+                else:
 
-            st.session_state["last_message"] = (
-                ok,
-                message,
-                status,
-            )
+                    st.session_state.last_message = (
+                        "error",
+                        message,
+                    )
 
-            st.rerun()
-
-
-# =========================================================
-# DISPLAY LAST ACTION
-# =========================================================
-
-if "last_message" in st.session_state:
-
-    ok, message, status = st.session_state.pop(
-        "last_message"
-    )
-
-    if ok and status == "booked":
-        st.success(message)
-
-    elif ok and status == "waitlisted":
-        st.warning(message)
-
-    else:
-        st.error(message)
+                st.rerun()
 
 
 # =========================================================
-# CURRENT STUDENT BOOKINGS
+# MY CONFIRMED BOOKINGS
 # =========================================================
 
 st.divider()
-st.subheader(f"{current_student}'s Confirmed Bookings")
+st.header("My Confirmed Bookings")
 
 
-if not student_bookings:
+if not current_bookings:
 
-    st.write("No confirmed bookings.")
+    st.write(
+        f"{current_student} currently has "
+        f"no confirmed bookings."
+    )
 
 else:
 
-    session_by_id = {
+    session_lookup = {
         session.session_id: session
         for session in SESSIONS
     }
 
-    for booking in student_bookings:
 
-        session = session_by_id[
+    for booking in current_bookings:
+
+        session = session_lookup[
             booking.session_id
         ]
 
-        left, right = st.columns([4, 1])
+        left, right = st.columns(
+            [4, 1]
+        )
 
         with left:
 
+            st.markdown(
+                f"### {session.subject}"
+            )
+
             st.write(
-                f"**{session.subject}** "
-                f"({session.start.strftime('%H:%M')}–"
-                f"{session.end.strftime('%H:%M')})"
+                f"{session.lecturer} | "
+                f"{session.start.strftime('%H:%M')}"
+                f"–"
+                f"{session.end.strftime('%H:%M')}"
             )
 
         with right:
 
             if st.button(
-                "Cancel",
-                key=f"cancel-{current_student}-{session.session_id}",
+                "Cancel Booking",
+                key=(
+                    f"cancel-"
+                    f"{current_student}-"
+                    f"{session.session_id}"
+                ),
                 use_container_width=True,
             ):
 
@@ -398,51 +562,71 @@ else:
                     st.session_state.waitlist,
                 )
 
-                st.session_state.bookings = updated_bookings
-                st.session_state.waitlist = updated_waitlist
-
-                log_event(
-                    f"{current_student} cancelled "
-                    f"{session.subject}."
+                st.session_state.bookings = (
+                    updated_bookings
                 )
 
-                if promoted_student:
+                st.session_state.waitlist = (
+                    updated_waitlist
+                )
 
-                    log_event(
-                        f"{promoted_student} automatically "
-                        f"promoted from the waitlist."
+
+                if ok:
+
+                    add_event(
+                        f"{current_student} cancelled "
+                        f"{session.subject}."
                     )
 
-                st.session_state["last_message"] = (
-                    True,
-                    message,
-                    "booked",
-                )
+                    if promoted_student:
+
+                        add_event(
+                            f"{promoted_student} was "
+                            f"automatically promoted "
+                            f"from the waitlist."
+                        )
+
+                    st.session_state.last_message = (
+                        "success",
+                        message,
+                    )
+
+                else:
+
+                    st.session_state.last_message = (
+                        "error",
+                        message,
+                    )
 
                 st.rerun()
 
 
 # =========================================================
-# WAITLIST STATUS
+# MY WAITLIST ENTRIES
 # =========================================================
 
-st.subheader(f"{current_student}'s Waitlist Status")
+st.divider()
+st.header("My Waitlist Entries")
 
 
-if not student_waitlist:
+if not current_waitlist:
 
-    st.write("Not currently on a waitlist.")
+    st.write(
+        f"{current_student} is not currently "
+        f"on any waitlist."
+    )
 
 else:
 
-    session_by_id = {
+    session_lookup = {
         session.session_id: session
         for session in SESSIONS
     }
 
-    for entry in student_waitlist:
 
-        session = session_by_id[
+    for entry in current_waitlist:
+
+        session = session_lookup[
             entry.session_id
         ]
 
@@ -453,21 +637,21 @@ else:
         )
 
         st.warning(
-            f"{session.subject} — "
-            f"Waitlist position {position}"
+            f"**{session.subject}** — "
+            f"Waitlist position **{position}**"
         )
 
 
 # =========================================================
-# SYSTEM STATE
+# LIVE SYSTEM STATE
 # =========================================================
 
 st.divider()
-st.header("🔍 System State")
+st.header("🔍 Live System State")
 
 st.caption(
-    "This section lets students see what is happening "
-    "behind the user interface."
+    "This view shows all confirmed bookings "
+    "and waitlists in the system."
 )
 
 
@@ -485,30 +669,43 @@ for session in SESSIONS:
         if entry.session_id == session.session_id
     ]
 
+
     with st.expander(
-        f"{session.subject} "
-        f"({session.start.strftime('%H:%M')}–"
-        f"{session.end.strftime('%H:%M')})",
+        f"{session.subject} | "
+        f"{session.start.strftime('%H:%M')}"
+        f"–"
+        f"{session.end.strftime('%H:%M')}",
         expanded=True,
     ):
 
-        left, right = st.columns(2)
+        col1, col2 = st.columns(2)
 
-        with left:
+        with col1:
 
-            st.markdown("#### Confirmed Students")
+            st.markdown(
+                f"#### Confirmed "
+                f"({len(confirmed)}/{session.capacity})"
+            )
 
             if confirmed:
 
                 for student in confirmed:
-                    st.write(f"✅ {student}")
+
+                    st.write(
+                        f"✅ {student}"
+                    )
 
             else:
-                st.write("None")
 
-        with right:
+                st.write("No bookings")
 
-            st.markdown("#### Waitlist")
+
+        with col2:
+
+            st.markdown(
+                f"#### Waitlist "
+                f"({len(waiting)})"
+            )
 
             if waiting:
 
@@ -516,12 +713,14 @@ for session in SESSIONS:
                     waiting,
                     start=1,
                 ):
+
                     st.write(
                         f"⏳ {number}. {student}"
                     )
 
             else:
-                st.write("None")
+
+                st.write("No waitlist")
 
 
 # =========================================================
@@ -529,66 +728,67 @@ for session in SESSIONS:
 # =========================================================
 
 st.divider()
-st.header("📋 System Event Log")
+st.header("📋 Activity Log")
+
 
 if not st.session_state.event_log:
 
-    st.write("No events recorded yet.")
+    st.write(
+        "No activity yet. "
+        "Start by selecting a student and making a booking."
+    )
 
 else:
 
     for event in st.session_state.event_log:
-        st.write(f"• {event}")
+
+        st.write(
+            f"• {event}"
+        )
 
 
 # =========================================================
-# QUALITY / LIFECYCLE VIEW
+# TEACHING INFORMATION
 # =========================================================
 
 st.divider()
 
 with st.expander(
-    "🧪 Software Quality & Lifecycle View"
+    "🧪 Software Quality Lifecycle"
 ):
 
     st.markdown(
         """
 ### Baseline V1.0
 
-Original approved requirements:
+The original system provided:
 
-- R1 — Create an available booking
-- R2 — Prevent overlapping bookings
-- R3 — Enforce capacity
-- R4 — Allow cancellation
-- R5 — Allow non-overlapping bookings
+- student bookings
+- overlap prevention
+- capacity control
+- cancellation
+- multiple non-overlapping bookings
 
 ### Change Request CR-001
 
-**Requested change:**
+A new requirement was introduced:
 
-When a session is full, students should be able to
-join a waitlist.
+> When a consultation session becomes full,
+> additional students should be able to join a
+> waitlist.
 
-When a confirmed booking is cancelled, the first
+When a confirmed student cancels, the first
 eligible waitlisted student should automatically
 receive the available place.
 
-### Quality controls
+### Verification
 
-Before CR-001 was merged:
+The system currently has:
 
-- impact analysis was performed
-- development occurred on a separate branch
-- five new waitlist tests were added
-- five original baseline regression tests were retained
-- all ten automated tests passed
-- the change was reviewed through a Pull Request
-- the change was merged into `main`
-- Streamlit automatically deployed the new version
+- 5 original baseline regression tests
+- 5 new CR-001 waitlist tests
+- 10 automated tests in total
 
-### Result
-
-V1.1 became the new approved baseline.
+All tests passed before CR-001 was merged.
 """
     )
