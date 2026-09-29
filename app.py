@@ -2,9 +2,7 @@ import streamlit as st
 from datetime import time
 
 from booking import (
-    Booking,
     Session,
-    WaitlistEntry,
     booking_count,
     cancel_and_promote,
     request_booking,
@@ -24,7 +22,7 @@ st.set_page_config(
 
 
 # =========================================================
-# FIXED DEMONSTRATION USERS
+# FIXED STUDENTS
 # =========================================================
 
 STUDENTS = [
@@ -50,7 +48,6 @@ SESSIONS = [
         end=time(11, 0),
         capacity=2,
     ),
-
     Session(
         session_id="LLM-1030",
         subject="Large Language Models",
@@ -59,7 +56,6 @@ SESSIONS = [
         end=time(11, 30),
         capacity=2,
     ),
-
     Session(
         session_id="CB-1130",
         subject="Consumer Behaviour",
@@ -72,7 +68,7 @@ SESSIONS = [
 
 
 # =========================================================
-# INITIAL SYSTEM STATE
+# SESSION STATE
 # =========================================================
 
 if "bookings" not in st.session_state:
@@ -102,12 +98,11 @@ def reset_system():
     st.session_state.event_log = []
     st.session_state.last_message = (
         "info",
-        "CampusConnect has been reset. "
-        "There are no bookings or waitlist entries.",
+        "CampusConnect has been reset. All bookings and waitlists are empty.",
     )
 
 
-def student_has_booking(student, session_id):
+def has_booking(student, session_id):
     return any(
         booking.student == student
         and booking.session_id == session_id
@@ -115,7 +110,7 @@ def student_has_booking(student, session_id):
     )
 
 
-def student_is_waitlisted(student, session_id):
+def is_waitlisted(student, session_id):
     return any(
         entry.student == student
         and entry.session_id == session_id
@@ -153,7 +148,6 @@ with st.sidebar:
     current_student = st.selectbox(
         "Select student",
         STUDENTS,
-        index=0,
     )
 
     st.success(
@@ -178,14 +172,12 @@ with st.sidebar:
 
 
 # =========================================================
-# LAST SYSTEM MESSAGE
+# DISPLAY LAST MESSAGE
 # =========================================================
 
 if st.session_state.last_message:
 
-    message_type, message = (
-        st.session_state.last_message
-    )
+    message_type, message = st.session_state.last_message
 
     if message_type == "success":
         st.success(message)
@@ -203,11 +195,8 @@ if st.session_state.last_message:
 
 
 # =========================================================
-# STUDENT DASHBOARD
+# CURRENT STUDENT STATUS
 # =========================================================
-
-st.header(f"Student Dashboard — {current_student}")
-
 
 current_bookings = [
     booking
@@ -221,6 +210,8 @@ current_waitlist = [
     if entry.student == current_student
 ]
 
+
+st.header(f"Student Dashboard — {current_student}")
 
 m1, m2, m3 = st.columns(3)
 
@@ -241,7 +232,7 @@ m3.metric(
 
 
 # =========================================================
-# CONSULTATIONS
+# AVAILABLE CONSULTATIONS
 # =========================================================
 
 st.divider()
@@ -253,6 +244,10 @@ columns = st.columns(len(SESSIONS))
 for column, session in zip(columns, SESSIONS):
 
     with column:
+
+        # -------------------------------------------------
+        # ALWAYS CALCULATE FRESH FROM SESSION STATE
+        # -------------------------------------------------
 
         confirmed_students = [
             booking.student
@@ -266,22 +261,26 @@ for column, session in zip(columns, SESSIONS):
             if entry.session_id == session.session_id
         ]
 
-        places_used = len(confirmed_students)
+        confirmed_count = len(confirmed_students)
 
         places_remaining = (
-            session.capacity - places_used
+            session.capacity - confirmed_count
         )
 
-        already_booked = student_has_booking(
+        already_booked = has_booking(
             current_student,
             session.session_id,
         )
 
-        already_waitlisted = student_is_waitlisted(
+        already_waitlisted = is_waitlisted(
             current_student,
             session.session_id,
         )
 
+
+        # -------------------------------------------------
+        # SESSION DETAILS
+        # -------------------------------------------------
 
         st.subheader(session.subject)
 
@@ -291,16 +290,19 @@ for column, session in zip(columns, SESSIONS):
 
         st.write(
             f"**Time:** "
-            f"{session.start.strftime('%H:%M')}"
-            f"–"
+            f"{session.start.strftime('%H:%M')}–"
             f"{session.end.strftime('%H:%M')}"
         )
 
         st.write(
-            f"**Capacity:** "
-            f"{places_used}/{session.capacity}"
+            f"**Confirmed bookings:** "
+            f"{confirmed_count} / {session.capacity}"
         )
 
+        st.write(
+            f"**Places remaining:** "
+            f"{places_remaining}"
+        )
 
         if places_remaining > 0:
 
@@ -312,22 +314,15 @@ for column, session in zip(columns, SESSIONS):
 
             st.error("SESSION FULL")
 
-
-        if waitlisted_students:
-
-            st.warning(
-                f"Waitlist: "
-                f"{len(waitlisted_students)} student(s)"
-            )
-
-        else:
-
-            st.write("Waitlist: 0")
+        st.write(
+            f"**Waitlist:** "
+            f"{len(waitlisted_students)}"
+        )
 
 
-        # ---------------------------------------------
-        # STUDENT ALREADY BOOKED
-        # ---------------------------------------------
+        # -------------------------------------------------
+        # ALREADY BOOKED
+        # -------------------------------------------------
 
         if already_booked:
 
@@ -341,9 +336,9 @@ for column, session in zip(columns, SESSIONS):
             )
 
 
-        # ---------------------------------------------
-        # STUDENT ALREADY WAITLISTED
-        # ---------------------------------------------
+        # -------------------------------------------------
+        # ALREADY WAITLISTED
+        # -------------------------------------------------
 
         elif already_waitlisted:
 
@@ -354,7 +349,7 @@ for column, session in zip(columns, SESSIONS):
             )
 
             st.warning(
-                f"You are waitlisted — "
+                f"You are on the waitlist — "
                 f"position {position}"
             )
 
@@ -366,9 +361,9 @@ for column, session in zip(columns, SESSIONS):
             )
 
 
-        # ---------------------------------------------
-        # BOOKING AVAILABLE
-        # ---------------------------------------------
+        # -------------------------------------------------
+        # SPACE AVAILABLE → BOOK
+        # -------------------------------------------------
 
         elif places_remaining > 0:
 
@@ -392,13 +387,8 @@ for column, session in zip(columns, SESSIONS):
                     st.session_state.waitlist,
                 )
 
-                st.session_state.bookings = (
-                    updated_bookings
-                )
-
-                st.session_state.waitlist = (
-                    updated_waitlist
-                )
+                st.session_state.bookings = updated_bookings
+                st.session_state.waitlist = updated_waitlist
 
                 if ok:
 
@@ -427,9 +417,9 @@ for column, session in zip(columns, SESSIONS):
                 st.rerun()
 
 
-        # ---------------------------------------------
-        # SESSION FULL → WAITLIST
-        # ---------------------------------------------
+        # -------------------------------------------------
+        # SESSION FULL → JOIN WAITLIST
+        # -------------------------------------------------
 
         else:
 
@@ -453,13 +443,8 @@ for column, session in zip(columns, SESSIONS):
                     st.session_state.waitlist,
                 )
 
-                st.session_state.bookings = (
-                    updated_bookings
-                )
-
-                st.session_state.waitlist = (
-                    updated_waitlist
-                )
+                st.session_state.bookings = updated_bookings
+                st.session_state.waitlist = updated_waitlist
 
                 if ok:
 
@@ -498,6 +483,13 @@ st.divider()
 st.header("My Confirmed Bookings")
 
 
+current_bookings = [
+    booking
+    for booking in st.session_state.bookings
+    if booking.student == current_student
+]
+
+
 if not current_bookings:
 
     st.write(
@@ -511,7 +503,6 @@ else:
         session.session_id: session
         for session in SESSIONS
     }
-
 
     for booking in current_bookings:
 
@@ -531,8 +522,7 @@ else:
 
             st.write(
                 f"{session.lecturer} | "
-                f"{session.start.strftime('%H:%M')}"
-                f"–"
+                f"{session.start.strftime('%H:%M')}–"
                 f"{session.end.strftime('%H:%M')}"
             )
 
@@ -562,14 +552,8 @@ else:
                     st.session_state.waitlist,
                 )
 
-                st.session_state.bookings = (
-                    updated_bookings
-                )
-
-                st.session_state.waitlist = (
-                    updated_waitlist
-                )
-
+                st.session_state.bookings = updated_bookings
+                st.session_state.waitlist = updated_waitlist
 
                 if ok:
 
@@ -609,6 +593,13 @@ st.divider()
 st.header("My Waitlist Entries")
 
 
+current_waitlist = [
+    entry
+    for entry in st.session_state.waitlist
+    if entry.student == current_student
+]
+
+
 if not current_waitlist:
 
     st.write(
@@ -622,7 +613,6 @@ else:
         session.session_id: session
         for session in SESSIONS
     }
-
 
     for entry in current_waitlist:
 
@@ -650,8 +640,8 @@ st.divider()
 st.header("🔍 Live System State")
 
 st.caption(
-    "This view shows all confirmed bookings "
-    "and waitlists in the system."
+    "This section shows all confirmed students and "
+    "waitlisted students for every consultation."
 )
 
 
@@ -669,11 +659,9 @@ for session in SESSIONS:
         if entry.session_id == session.session_id
     ]
 
-
     with st.expander(
         f"{session.subject} | "
-        f"{session.start.strftime('%H:%M')}"
-        f"–"
+        f"{session.start.strftime('%H:%M')}–"
         f"{session.end.strftime('%H:%M')}",
         expanded=True,
     ):
@@ -697,7 +685,7 @@ for session in SESSIONS:
 
             else:
 
-                st.write("No bookings")
+                st.write("No confirmed bookings")
 
 
         with col2:
@@ -724,7 +712,7 @@ for session in SESSIONS:
 
 
 # =========================================================
-# EVENT LOG
+# ACTIVITY LOG
 # =========================================================
 
 st.divider()
@@ -735,7 +723,7 @@ if not st.session_state.event_log:
 
     st.write(
         "No activity yet. "
-        "Start by selecting a student and making a booking."
+        "Select a student and make a booking."
     )
 
 else:
@@ -748,7 +736,7 @@ else:
 
 
 # =========================================================
-# TEACHING INFORMATION
+# SOFTWARE QUALITY VIEW
 # =========================================================
 
 st.divider()
@@ -761,34 +749,31 @@ with st.expander(
         """
 ### Baseline V1.0
 
-The original system provided:
+The original system supported:
 
-- student bookings
-- overlap prevention
-- capacity control
-- cancellation
-- multiple non-overlapping bookings
+- booking an available consultation
+- preventing overlapping bookings
+- enforcing session capacity
+- cancelling bookings
+- booking multiple non-overlapping sessions
 
 ### Change Request CR-001
 
-A new requirement was introduced:
+When a consultation becomes full:
 
-> When a consultation session becomes full,
-> additional students should be able to join a
-> waitlist.
+- another student can join a waitlist
+- waitlist order is preserved
+- when a place becomes available, the first eligible
+  student is automatically promoted
 
-When a confirmed student cancels, the first
-eligible waitlisted student should automatically
-receive the available place.
+### Automated Verification
 
-### Verification
+The regression suite contains:
 
-The system currently has:
+- 5 original baseline tests
+- 5 CR-001 waitlist tests
+- 10 tests in total
 
-- 5 original baseline regression tests
-- 5 new CR-001 waitlist tests
-- 10 automated tests in total
-
-All tests passed before CR-001 was merged.
+All tests passed before the change was merged.
 """
     )
