@@ -348,3 +348,56 @@ def cancel_and_promote(
         "Booking cancelled. No eligible waitlisted student was available.",
         None,
     )
+
+
+# ---------------------------------------------------------
+# CR-002 LECTURER-DEFINED CONSULTATION SLOTS
+# ---------------------------------------------------------
+
+
+def create_session(
+    session_id: str,
+    subject: str,
+    lecturer: str,
+    start: time,
+    end: time,
+    capacity: int,
+    sessions: List[Session],
+) -> Tuple[List[Session], bool, str]:
+    """Create a lecturer-defined consultation slot after validation."""
+
+    subject = subject.strip()
+    lecturer = lecturer.strip()
+    session_id = session_id.strip()
+
+    if not session_id or not subject or not lecturer:
+        return sessions, False, "Session ID, subject and lecturer are required."
+
+    if start >= end:
+        return sessions, False, "End time must be later than start time."
+
+    if capacity < 1:
+        return sessions, False, "Capacity must be at least 1."
+
+    for session in sessions:
+        if session.session_id == session_id:
+            return sessions, False, "A session with this ID already exists."
+
+        if (
+            session.lecturer.casefold() == lecturer.casefold()
+            and session.subject.casefold() == subject.casefold()
+            and session.start == start
+            and session.end == end
+        ):
+            return sessions, False, "This consultation slot already exists."
+
+    new_session = Session(
+        session_id=session_id,
+        subject=subject,
+        lecturer=lecturer,
+        start=start,
+        end=end,
+        capacity=capacity,
+    )
+
+    return sessions + [new_session], True, "Consultation slot added."
