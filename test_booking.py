@@ -7,6 +7,7 @@ from booking import (
     add_booking,
     cancel_and_promote,
     cancel_booking,
+    create_session,
     request_booking,
 )
 
@@ -282,3 +283,122 @@ def test_ineligible_waitlisted_student_is_skipped():
     ]
 
     assert "Sam" in message
+
+
+# ---------------------------------------------------------
+# CR-002 LECTURER-DEFINED SLOT TESTS
+# ---------------------------------------------------------
+
+
+def test_lecturer_can_create_valid_slot():
+    sessions, ok, message = create_session(
+        "CR2-001",
+        "Software Quality Engineering",
+        "Dr. Lee",
+        time(14, 0),
+        time(15, 0),
+        2,
+        SESSIONS,
+    )
+
+    assert ok is True
+    assert len(sessions) == len(SESSIONS) + 1
+    assert sessions[-1].session_id == "CR2-001"
+    assert message == "Consultation slot added."
+
+
+def test_session_end_time_must_be_after_start_time():
+    sessions, ok, message = create_session(
+        "CR2-002",
+        "Software Quality Engineering",
+        "Dr. Lee",
+        time(15, 0),
+        time(14, 0),
+        2,
+        SESSIONS,
+    )
+
+    assert ok is False
+    assert sessions == SESSIONS
+    assert "later than start" in message.lower()
+
+
+def test_duplicate_lecturer_slot_is_rejected():
+    sessions, ok, _ = create_session(
+        "CR2-003",
+        "Software Quality Engineering",
+        "Dr. Lee",
+        time(14, 0),
+        time(15, 0),
+        2,
+        SESSIONS,
+    )
+
+    assert ok is True
+
+    sessions_after, ok, message = create_session(
+        "CR2-004",
+        "Software Quality Engineering",
+        "Dr. Lee",
+        time(14, 0),
+        time(15, 0),
+        2,
+        sessions,
+    )
+
+    assert ok is False
+    assert sessions_after == sessions
+    assert "already exists" in message.lower()
+
+
+def test_adjacent_lecturer_slots_are_allowed():
+    sessions, ok, _ = create_session(
+        "CR2-005",
+        "Software Quality Engineering",
+        "Dr. Lee",
+        time(14, 0),
+        time(15, 0),
+        2,
+        SESSIONS,
+    )
+
+    assert ok is True
+
+    sessions, ok, message = create_session(
+        "CR2-006",
+        "Software Quality Engineering",
+        "Dr. Lee",
+        time(15, 0),
+        time(16, 0),
+        2,
+        sessions,
+    )
+
+    assert ok is True
+    assert message == "Consultation slot added."
+
+
+def test_student_can_book_lecturer_created_slot():
+    sessions, ok, _ = create_session(
+        "CR2-007",
+        "Software Quality Engineering",
+        "Dr. Lee",
+        time(14, 0),
+        time(15, 0),
+        2,
+        SESSIONS,
+    )
+
+    assert ok is True
+
+    bookings, ok, message = add_booking(
+        "Alex",
+        "CR2-007",
+        sessions,
+        [],
+    )
+
+    assert ok is True
+    assert len(bookings) == 1
+    assert bookings[0] == Booking("Alex", "CR2-007")
+    assert message == "Booking accepted."

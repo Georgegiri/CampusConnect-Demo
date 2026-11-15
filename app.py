@@ -4,6 +4,7 @@ from datetime import time
 from booking import (
     Session,
     cancel_and_promote,
+    create_session,
     request_booking,
     waitlist_position,
 )
@@ -41,10 +42,10 @@ LECTURERS = [
 
 
 # =========================================================
-# CONSULTATION SESSIONS
+# CONSULTATION st.session_state.sessions
 # =========================================================
 
-SESSIONS = [
+DEFAULT_SESSIONS = [
     Session(
         session_id="SQE-1000",
         subject="Software Quality Engineering",
@@ -76,6 +77,9 @@ SESSIONS = [
 # SESSION STATE
 # =========================================================
 
+if "sessions" not in st.session_state:
+    st.session_state.sessions = list(DEFAULT_SESSIONS)
+
 if "bookings" not in st.session_state:
     st.session_state.bookings = []
 
@@ -98,6 +102,7 @@ def add_event(message):
 
 
 def reset_system():
+    st.session_state.sessions = list(DEFAULT_SESSIONS)
     st.session_state.bookings = []
     st.session_state.waitlist = []
     st.session_state.event_log = []
@@ -209,8 +214,9 @@ with st.sidebar:
     st.divider()
 
     st.caption("System Version")
-    st.write("**CampusConnect V1.1**")
+    st.write("**CampusConnect V1.2**")
     st.write("CR-001: **Waitlist Support**")
+    st.write("CR-002: **Lecturer-defined Slots**")
 
 
 # =========================================================
@@ -278,17 +284,17 @@ if role == "Student":
 
     m3.metric(
         "Available Subjects",
-        len(SESSIONS),
+        len(st.session_state.sessions),
     )
 
     st.divider()
     st.subheader("Available Consultations")
 
-    columns = st.columns(len(SESSIONS))
+    columns = st.columns(len(st.session_state.sessions))
 
     for column, session in zip(
         columns,
-        SESSIONS,
+        st.session_state.sessions,
     ):
 
         with column:
@@ -401,7 +407,7 @@ if role == "Student":
                     ) = request_booking(
                         current_student,
                         session.session_id,
-                        SESSIONS,
+                        st.session_state.sessions,
                         st.session_state.bookings,
                         st.session_state.waitlist,
                     )
@@ -462,7 +468,7 @@ if role == "Student":
                     ) = request_booking(
                         current_student,
                         session.session_id,
-                        SESSIONS,
+                        st.session_state.sessions,
                         st.session_state.bookings,
                         st.session_state.waitlist,
                     )
@@ -528,7 +534,7 @@ if role == "Student":
 
         session_lookup = {
             session.session_id: session
-            for session in SESSIONS
+            for session in st.session_state.sessions
         }
 
         for booking in current_bookings:
@@ -574,7 +580,7 @@ if role == "Student":
                     ) = cancel_and_promote(
                         current_student,
                         session.session_id,
-                        SESSIONS,
+                        st.session_state.sessions,
                         st.session_state.bookings,
                         st.session_state.waitlist,
                     )
@@ -641,7 +647,7 @@ if role == "Student":
 
         session_lookup = {
             session.session_id: session
-            for session in SESSIONS
+            for session in st.session_state.sessions
         }
 
         for entry in current_waitlist:
@@ -675,14 +681,95 @@ elif role == "Lecturer":
     )
 
     st.info(
-        "Lecturers can view their own consultation "
-        "sessions, confirmed students, capacity "
-        "and waitlists."
+        "Lecturers can add their own available consultation "
+        "slots and view confirmed students, capacity and waitlists."
     )
+
+    st.subheader("Add Consultation Slot")
+
+    default_subjects = {
+        "Dr. Lee": "Software Quality Engineering",
+        "Dr. Tan": "Large Language Models",
+        "Dr. Wong": "Consumer Behaviour",
+    }
+
+    with st.form("add-consultation-slot"):
+        subject = st.text_input(
+            "Subject",
+            value=default_subjects.get(current_lecturer, ""),
+        )
+
+        c1, c2, c3 = st.columns(3)
+
+        with c1:
+            start_time = st.time_input(
+                "Start time",
+                value=time(9, 0),
+            )
+
+        with c2:
+            end_time = st.time_input(
+                "End time",
+                value=time(10, 0),
+            )
+
+        with c3:
+            capacity = st.number_input(
+                "Capacity",
+                min_value=1,
+                max_value=20,
+                value=2,
+                step=1,
+            )
+
+        add_slot = st.form_submit_button(
+            "Add Consultation Slot",
+            use_container_width=True,
+        )
+
+    if add_slot:
+        next_number = len(st.session_state.sessions) + 1
+        session_id = f"CR2-{next_number:03d}"
+
+        (
+            updated_sessions,
+            ok,
+            message,
+        ) = create_session(
+            session_id,
+            subject,
+            current_lecturer,
+            start_time,
+            end_time,
+            int(capacity),
+            st.session_state.sessions,
+        )
+
+        if ok:
+            st.session_state.sessions = updated_sessions
+            add_event(
+                f"{current_lecturer} added {subject} "
+                f"{start_time.strftime('%H:%M')}–"
+                f"{end_time.strftime('%H:%M')}."
+            )
+            st.session_state.last_message = (
+                "success",
+                message,
+            )
+        else:
+            st.session_state.last_message = (
+                "error",
+                message,
+            )
+
+        st.rerun()
+
+    st.divider()
+    st.subheader("My Consultation Slots")
 
     lecturer_sessions = [
         session
-        for session in SESSIONS
+        for session in st.session_state.sessions
         if session.lecturer
         == current_lecturer
     ]
@@ -815,7 +902,7 @@ else:
 
     total_capacity = sum(
         session.capacity
-        for session in SESSIONS
+        for session in st.session_state.sessions
     )
 
     total_bookings = len(
@@ -835,7 +922,7 @@ else:
 
     a2.metric(
         "Sessions",
-        len(SESSIONS),
+        len(st.session_state.sessions),
     )
 
     a3.metric(
@@ -851,7 +938,7 @@ else:
     st.divider()
     st.subheader("Live System State")
 
-    for session in SESSIONS:
+    for session in st.session_state.sessions:
 
         confirmed = confirmed_students(
             session.session_id
@@ -967,17 +1054,17 @@ else:
 
     q1.metric(
         "Current Version",
-        "V1.1",
+        "V1.2",
     )
 
     q2.metric(
         "Automated Tests",
-        "10 / 10",
+        "15 / 15",
     )
 
     q3.metric(
         "Open Change",
-        "CR-001",
+        "CR-002",
     )
 
     st.markdown(
@@ -1004,6 +1091,21 @@ When a consultation session is full:
 - the first eligible waitlisted student is promoted
 - promotion must not create an overlapping booking
 
+### Change Request CR-002
+
+**Lecturer-defined consultation slots**
+
+Lecturers may now add multiple consultation slots by specifying:
+
+- subject
+- start time
+- end time
+- capacity
+
+The system rejects invalid times and exact duplicate slots.
+Students can immediately book lecturer-created slots using the existing
+capacity, overlap and waitlist rules.
+
 ### Verification
 
 Before CR-001 was merged:
@@ -1015,5 +1117,12 @@ Before CR-001 was merged:
 - all 10 tests passed in GitHub Actions
 - the Pull Request was approved and merged
 - Streamlit deployed the updated version
+
+For CR-002:
+
+- 5 new automated tests were added
+- baseline and CR-001 regression tests were retained
+- lecturer-created slots use the existing booking and waitlist rules
+- adjacent slots such as 10:00–11:00 and 11:00–12:00 remain valid
 """
     )
