@@ -24,21 +24,12 @@ jobs:
         run: |
           $path = "CampusConnect_Desktop_Demo\campusconnect.py"
           $content = Get-Content $path -Raw
-
-          $imports = @'
-import os
-import sqlite3
-from pathlib import Path
-'@
-          $content = $content.Replace("import sqlite3", $imports.Trim())
-
+          $nl = [Environment]::NewLine
+          $imports = "import os" + $nl + "import sqlite3" + $nl + "from pathlib import Path"
+          $content = $content.Replace("import sqlite3", $imports)
           $old = 'DB_FILE = "campusconnect.db"'
-          $new = @'
-DATA_DIR = Path(os.getenv("LOCALAPPDATA", str(Path.home()))) / "CampusConnect"
-DATA_DIR.mkdir(parents=True, exist_ok=True)
-DB_FILE = str(DATA_DIR / "campusconnect.db")
-'@
-          $content = $content.Replace($old, $new.Trim())
+          $new = 'DATA_DIR = Path(os.getenv("LOCALAPPDATA", str(Path.home()))) / "CampusConnect"' + $nl + 'DATA_DIR.mkdir(parents=True, exist_ok=True)' + $nl + 'DB_FILE = str(DATA_DIR / "campusconnect.db")'
+          $content = $content.Replace($old, $new)
           Set-Content -Path $path -Value $content -Encoding UTF8
 
       - name: Install PyInstaller
